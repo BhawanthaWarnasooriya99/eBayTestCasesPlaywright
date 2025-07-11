@@ -402,3 +402,83 @@ test('Verify sponsored products are clearly labeled',async ({page}) => {
     expect(labelVisible).toBeTruthy();
 
 });
+
+test('Verify related product image is displayed properly',async ({page}) => {
+
+    //Navigate to the eBay website
+    await page.goto("https://www.ebay.com/");
+    // Search for a wallet product
+    await page.fill("//input[@id='gh-ac']", 'wallet');
+    // Click the search button
+    await page.click("//button[@id='gh-search-btn']");
+    // Wait for the search results to load
+    await expect(page).toHaveTitle('Wallet for sale | eBay');
+    
+    // Click on the first product in the search results
+    const firstProduct = await page.waitForSelector("//ul[@class='srp-results srp-grid clearfix']/li[1]//div[@class ='s-item__title']");
+    // Get the product title text
+    const productTitle = await firstProduct.$eval("span", el => el.textContent?.trim());
+    console.log('First product title:', productTitle);
+    
+    // Get the browser context
+    const context = page.context();
+    
+    // Wait for the new tab to open after the click
+    const [newTab] = await Promise.all([
+        context.waitForEvent('page'),
+        firstProduct.click(), // Triggers new tab
+    ]);
+
+    // Ensure the new tab has loaded content
+    await newTab.waitForLoadState('domcontentloaded');
+
+    // Wait for the product details page to load 
+    const detailsTitleElement = await newTab.waitForSelector("//h1[@class='x-item-title__mainTitle']//span[@class='ux-textspans ux-textspans--BOLD']");
+    // Scroll the element into view if needed
+    await detailsTitleElement.click();
+    const detailsTitle = await detailsTitleElement.innerText();
+    console.log('Details page title:', detailsTitle?.trim());
+
+    // Compare the titles (ignoring case and trimming whitespace)
+    //expect(detailsTitle?.toLowerCase().trim()).toContain(productTitle?.toLowerCase().trim());
+    const normalize = (str: string | null | undefined) =>
+    str?.toLowerCase().trim().replace(/\s+/g, ' ') || '';
+
+    expect(normalize(detailsTitle)).toContain(normalize(productTitle));
+
+    // Verify that related products are displayed
+    const relatedProducts = newTab.locator("//div[@class='Mgpb rgAU']//div[@class='ZNEz']");
+
+    // Wait until the items are visible
+    await expect(relatedProducts.first()).toBeVisible();
+    
+    // Count number of items
+    const itemCount = await relatedProducts.count();
+
+    // Print the count
+    console.log(`Number of similar items listed: ${itemCount}`);
+
+    // Assert that the count is within the required range
+    expect(itemCount).toBeGreaterThan(0);
+    expect(itemCount).toBeLessThanOrEqual(6);
+
+    // Loop through related products and verify their type
+    for (let i = 0; i < itemCount; i++) {
+    const itemLink = relatedProducts.nth(i);
+
+    // Open each related product in a new tab
+    const [relatedTab] = await Promise.all([
+      context.waitForEvent('page'),
+      itemLink.click(),
+    ]);
+    await relatedTab.waitForLoadState('domcontentloaded');
+
+    // Get the image element
+    const imageElement = relatedTab.locator("//div[@class='ux-image-carousel-container image-container']//div[1]//img[1]");
+    const imageVisible = await imageElement.isVisible();
+    console.log(`Related product ${i + 1} image visibility: ${imageVisible ? 'Visible' : 'Not visible'}`);
+    expect(imageVisible).toBeTruthy();
+    await relatedTab.close();
+}
+
+});
